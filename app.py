@@ -1,94 +1,85 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-from scipy import stats
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-st.set_page_config(page_title='Retail Inventory Dashboard', layout='wide', page_icon='🏪')
+# Konfigurasi Halaman Web
+st.set_page_config(page_title="Smart Inventory UMKM", page_icon="📦", layout="wide")
 
+# Bikin Judul Kece
+st.title("📦 Dashboard Manajemen Inventaris Cerdas")
+st.markdown("Pantau laju penjualan dan status stok barang UMKM lu di sini biar nggak kecolongan!")
+
+# ==========================================
+# 1. LOAD DATASET (Pake Caching biar webnya gak lemot)
+# ==========================================
 @st.cache_data
 def load_data():
-    df = pd.read_csv('retail_store_inventory_data.csv', parse_dates=['Date'])
-    df.columns = df.columns.str.replace(' ', '_').str.replace('/', '_')
-    df['Year']    = df['Date'].dt.year
-    df['Month']   = df['Date'].dt.month
-    df['Holiday_Promotion'] = df['Holiday_Promotion'].astype(bool)
-    df['Forecast_Error'] = df['Demand_Forecast'] - df['Units_Sold']
-    df['MAPE'] = (df['Forecast_Error'] / df['Units_Sold'].replace(0, np.nan)).abs() * 100
-    df['Effective_Price'] = df['Price'] * (1 - df['Discount'] / 100)
-    df['Price_Competitive_Ratio'] = df['Price'] / df['Competitor_Pricing']
+    # Pastiin file CSV ini ada di folder yang sama dengan app.py
+    df = pd.read_csv('Inventory_Dataset_Ready.csv')
+    df['Date'] = pd.to_datetime(df['Date'])
     return df
 
 df = load_data()
+df_sales = df[df['Transaction_Type'] == 'OUT (Penjualan)']
 
-# Sidebar
-st.sidebar.title('Filter')
-sel_region   = st.sidebar.multiselect('Region', df['Region'].unique(), default=list(df['Region'].unique()))
-sel_category = st.sidebar.multiselect('Kategori', df['Category'].unique(), default=list(df['Category'].unique()))
-sel_year     = st.sidebar.multiselect('Tahun', sorted(df['Year'].unique()), default=list(df['Year'].unique()))
+# ==========================================
+# 2. BIKIN METRIK RINGKASAN (Nongkrong di paling atas)
+# ==========================================
+st.subheader("📊 Ringkasan Penjualan")
+col1, col2, col3 = st.columns(3)
 
-dff = df[(df['Region'].isin(sel_region)) &
-         (df['Category'].isin(sel_category)) &
-         (df['Year'].isin(sel_year))]
+total_omset = df_sales['Sales'].sum()
+total_barang_terjual = df_sales['Quantity'].sum()
+total_transaksi = len(df_sales)
 
-st.title('Retail Inventory Analytics Dashboard')
-st.markdown('**Dataset:** retail_store_inventory_data.csv  |  Dibuat dengan Streamlit + Plotly')
+col1.metric("Total Omset (Rp)", f"Rp {total_omset:,.0f}")
+col2.metric("Total Barang Keluar (Pcs)", f"{total_barang_terjual}")
+col3.metric("Total Transaksi", f"{total_transaksi}")
 
-# KPI Cards
-col1, col2, col3, col4 = st.columns(4)
-col1.metric('Total Records', f"{len(dff):,}")
-col2.metric('Avg Units Sold/hari', f"{dff['Units_Sold'].mean():.1f}")
-col3.metric('Avg Inventory Level', f"{dff['Inventory_Level'].mean():.0f}")
-col4.metric('Overall MAPE', f"{dff['MAPE'].mean():.1f}%")
+st.divider() # Garis pembatas
 
-st.divider()
+# ==========================================
+# 3. BAGIAN GRAFIK (Dibagi jadi 2 kolom biar rapi)
+# ==========================================
+kolom_kiri, kolom_kanan = st.columns(2)
 
-# Row 1
-col_a, col_b = st.columns(2)
+# ---> GRAFIK KIRI: Top 10 Barang Laris
+with kolom_kiri:
+    st.subheader("🔥 Top-Selling Items")
+    fig1, ax1 = plt.subplots(figsize=(8, 5))
+    top_items = df_sales.groupby('Product_Name')['Quantity'].sum().reset_index()
+    top_items = top_items.sort_values(by='Quantity', ascending=False).head(10)
+    
+    sns.barplot(data=top_items, x='Quantity', y='Product_Name', hue='Product_Name', palette='viridis', legend=False, ax=ax1)
+    ax1.set_xlabel('Total Terjual (Pcs)')
+    ax1.set_ylabel('')
+    st.pyplot(fig1)
 
-with col_a:
-    cat_sales = dff.groupby('Category')['Units_Sold'].mean().sort_values(ascending=False).reset_index()
-    fig1 = px.bar(cat_sales, x='Category', y='Units_Sold',
-                  title='Rata-rata Penjualan per Kategori',
-                  color='Category', color_discrete_sequence=px.colors.qualitative.Set2)
-    st.plotly_chart(fig1, use_container_width=True)
+# ---> GRAFIK KANAN: Status Stok (Early Warning)
+with kolom_kanan:
+    st.subheader("⚠️ Status Sisa Stok Terakhir")
+    fig2, ax2 = plt.subplots(figsize=(8, 5))
+    last_stock = df.sort_values('Date').groupby('Product_Name').tail(1)[['Product_Name', 'Current_Stock']]
+    last_stock = last_stock.sort_values(by='Current_Stock')
+    
+    # Warna: Merah kalau di bawah 30, Hijau kalau aman
+    colors = ['crimson' if x < 30 else 'mediumseagreen' for x in last_stock['Current_Stock']]
+    
+    sns.barplot(data=last_stock, x='Current_Stock', y='Product_Name', hue='Product_Name', palette=colors, legend=False, ax=ax2)
+    ax2.axvline(x=30, color='red', linestyle='--', label='Batas Aman (30 pcs)')
+    ax2.set_xlabel('Sisa Stok (Pcs)')
+    ax2.set_ylabel('')
+    ax2.legend()
+    st.pyplot(fig2)
 
-with col_b:
-    season_sales = dff.groupby('Seasonality')['Units_Sold'].mean().reset_index()
-    fig2 = px.bar(season_sales, x='Seasonality', y='Units_Sold',
-                  title='Rata-rata Penjualan per Musim',
-                  color='Seasonality', color_discrete_sequence=px.colors.qualitative.Pastel)
-    st.plotly_chart(fig2, use_container_width=True)
+# ---> GRAFIK BAWAH: Tren Penjualan Harian
+st.subheader("📈 Tren Penjualan Harian")
+fig3, ax3 = plt.subplots(figsize=(15, 4))
+tren_harian = df_sales.groupby('Date')['Quantity'].sum().reset_index()
 
-# Row 2
-col_c, col_d = st.columns(2)
-
-with col_c:
-    monthly = dff.groupby(['Year','Month'])['Units_Sold'].mean().reset_index()
-    monthly['Period'] = pd.to_datetime(monthly[['Year','Month']].assign(Day=1))
-    fig3 = px.line(monthly, x='Period', y='Units_Sold', title='Trend Penjualan Bulanan')
-    st.plotly_chart(fig3, use_container_width=True)
-
-with col_d:
-    fig4 = px.histogram(dff, x='Forecast_Error', nbins=80,
-                        title='Distribusi Forecast Error',
-                        color_discrete_sequence=['#3498db'])
-    fig4.add_vline(x=0, line_dash='dash', line_color='red')
-    st.plotly_chart(fig4, use_container_width=True)
-
-# A/B Test Live
-st.divider()
-st.subheader('A/B Test: Promosi vs Non-Promosi')
-grp_a = dff[dff['Holiday_Promotion']==False]['Units_Sold']
-grp_b = dff[dff['Holiday_Promotion']==True]['Units_Sold']
-if len(grp_a) > 1 and len(grp_b) > 1:
-    t_stat, p_val = stats.ttest_ind(grp_a, grp_b, equal_var=False)
-    col1, col2, col3 = st.columns(3)
-    col1.metric('Avg Non-Promosi', f"{grp_a.mean():.2f}")
-    col2.metric('Avg Promosi', f"{grp_b.mean():.2f}",
-                delta=f"{grp_b.mean()-grp_a.mean():+.2f}")
-    col3.metric('p-value', f"{p_val:.4f}",
-                delta='Signifikan ✅' if p_val < 0.05 else 'Tidak Signifikan ❌')
-
-st.caption('Dibuat oleh: [Nama Kamu] | Dataset: retail_store_inventory_data.csv')
+sns.lineplot(data=tren_harian, x='Date', y='Quantity', color='coral', marker='o', ax=ax3)
+ax3.set_xlabel('Tanggal')
+ax3.set_ylabel('Total Barang Terjual')
+plt.xticks(rotation=45)
+st.pyplot(fig3)
