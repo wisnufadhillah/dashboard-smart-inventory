@@ -1,6 +1,10 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import google.generativeai as genai # Tambahan library buat Gemini AI
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 st.set_page_config(page_title="Smart Inventory UMKM", layout="wide")
 
@@ -8,6 +12,7 @@ st.set_page_config(page_title="Smart Inventory UMKM", layout="wide")
 def load_data():
     # Karena CSV-nya ada di folder yang sama sama app.py, path-nya tinggal nama filenya aja
     df = pd.read_csv('dataset_inventory_umkm_bersih.csv')
+    
     # Bikin manipulasi bobot biar realistis (Sembako laku keras, Perabotan jarang laku)
     bobot = {
         'Sembako': 1.5,
@@ -33,6 +38,7 @@ st.markdown("Visualisasi data transaksi warung sebelum dicolok ke model AI Predi
 col1, col2, col3 = st.columns(3)
 col1.metric("Total Transaksi", f"{len(df):,}")
 col2.metric("Total Barang Terjual", f"{df['Units Sold'].sum():,}")
+
 # Pastiin nama kolomnya bener sesuai hasil export dari Colab tadi
 if 'Total_Pendapatan_Rp' in df.columns:
     col3.metric("Total Pendapatan", f"Rp {df['Total_Pendapatan_Rp'].sum():,.0f}")
@@ -56,3 +62,41 @@ with chart_col2:
     st.plotly_chart(fig2, use_container_width=True)
 
 st.warning("⚠️ Early Warning System: Nanti di sini ditaruh indikator kalau 'Inventory Level' udah mau abis.")
+
+# ==========================================================
+# TAHAP INTEGRASI GENERATIVE AI (ASISTEN BISNIS UMKM)
+# ==========================================================
+st.divider()
+st.subheader("🤖 Asisten Bisnis AI (Generative AI)")
+
+# Ngambil API Key dari file .env (jadi kodenya ga keliatan di sini)
+API_KEY = os.getenv("GEMINI_API_KEY")
+
+if API_KEY is None:
+    st.error("Waduh, API Key nggak ketemu! Cek file .env lu Bol!")
+else:
+    genai.configure(api_key=API_KEY)
+    
+    # Sisa kodingan ke bawahnya sama persis kayak sebelumnya...
+    gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    angka_prediksi_lstm = 135 
+    kategori_barang = "Sembako"
+    
+    st.info(f"💡 Info Sistem: Model AI memprediksi besok akan ada lonjakan penjualan **{kategori_barang}** sebanyak **{angka_prediksi_lstm} unit**.")
+    
+    if st.button("Minta Saran Bisnis dari AI"):
+        with st.spinner("Si Asisten lagi mikir merangkai kata..."):
+            prompt = f"""
+            Kamu adalah asisten bisnis untuk UMKM warung kelontong di Indonesia. 
+            Sistem AI pemprediksi stok kami memperkirakan bahwa besok akan terjual {angka_prediksi_lstm} unit {kategori_barang}.
+            Berikan 3 poin saran singkat, ramah, dan praktis kepada pemilik warung apa yang harus mereka persiapkan hari ini.
+            Gunakan bahasa Indonesia yang santai tapi profesional.
+            """
+            
+            try:
+                response = gemini_model.generate_content(prompt)
+                st.success("Saran Bisnis untuk Juragan Warung:")
+                st.write(response.text)
+            except Exception as e:
+                st.error(f"Waduh, gagal manggil API. Cek koneksi internet lu! Error: {e}")
