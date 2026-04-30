@@ -93,7 +93,7 @@ else:
 
     # Kita balikin ke model paling standar dulu
     # Pake model versi terbaru yang udah pasti ada di list
-    gemini_model = genai.GenerativeModel('gemini-2.0-flash')
+    gemini_model = genai.GenerativeModel('gemini-1.5-flash')
     
     angka_prediksi_lstm = 135 
     kategori_barang = "Sembako"
