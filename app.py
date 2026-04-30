@@ -8,6 +8,20 @@ st.set_page_config(page_title="Smart Inventory UMKM", layout="wide")
 def load_data():
     # Karena CSV-nya ada di folder yang sama sama app.py, path-nya tinggal nama filenya aja
     df = pd.read_csv('dataset_inventory_umkm_bersih.csv')
+    # Bikin manipulasi bobot biar realistis (Sembako laku keras, Perabotan jarang laku)
+    bobot = {
+        'Sembako': 1.5,
+        'Elektronik & Pulsa': 1.1,
+        'Pakaian': 0.8,
+        'Mainan Anak': 0.5,
+        'Perabotan': 0.2
+    }
+    
+    # Terapin bobotnya ke Units Sold
+    df['Units Sold'] = df.apply(lambda row: int(row['Units Sold'] * bobot.get(row['Category'], 1)), axis=1)
+    
+    # Hitung ulang pendapatan pake harga yang di-adjust biar ga triliunan (misal dibagi 100)
+    df['Total_Pendapatan_Rp'] = df['Total_Pendapatan_Rp'] / 100
     df['Date'] = pd.to_datetime(df['Date'])
     return df
 
