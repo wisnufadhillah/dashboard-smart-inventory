@@ -69,16 +69,30 @@ st.warning("⚠️ Early Warning System: Nanti di sini ditaruh indikator kalau '
 st.divider()
 st.subheader("🤖 Asisten Bisnis AI (Generative AI)")
 
-# Ngambil API Key dari file .env (jadi kodenya ga keliatan di sini)
-API_KEY = os.getenv("GEMINI_API_KEY")
+# Cara paling tangguh ngambil API Key: Cek di Streamlit Secrets dulu, baru cek file .env lokal
+if "GEMINI_API_KEY" in st.secrets:
+    API_KEY = st.secrets["GEMINI_API_KEY"]
+else:
+    API_KEY = os.getenv("GEMINI_API_KEY")
 
-if API_KEY is None:
-    st.error("Waduh, API Key nggak ketemu! Cek file .env lu Bol!")
+if not API_KEY:
+    st.error("Waduh, API Key nggak ketemu! Pastiin lu udah masukin ke 'Secrets' di Streamlit Cloud, Bol!")
 else:
     genai.configure(api_key=API_KEY)
     
-    # Sisa kodingan ke bawahnya sama persis kayak sebelumnya...
-    gemini_model = genai.GenerativeModel('gemini-pro')
+    # --- TOMBOL MODE DETEKTIF (DEBUGGING) ---
+    if st.button("🛠️ Cek Daftar Model Google AI"):
+        with st.spinner("Lagi ngecek ke server Google..."):
+            try:
+                models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                st.success("Berhasil konek! Ini daftar model yang diijinin buat API Key lu:")
+                st.write(models)
+            except Exception as e:
+                st.error(f"Gagal ngecek API! Fix ini mah API Key lu salah atau belum ke-save di Streamlit Cloud. Detail: {e}")
+    # ----------------------------------------
+
+    # Kita balikin ke model paling standar dulu
+    gemini_model = genai.GenerativeModel('gemini-1.5-flash')
     
     angka_prediksi_lstm = 135 
     kategori_barang = "Sembako"
@@ -99,4 +113,4 @@ else:
                 st.success("Saran Bisnis untuk Juragan Warung:")
                 st.write(response.text)
             except Exception as e:
-                st.error(f"Waduh, gagal manggil API. Cek koneksi internet lu! Error: {e}")
+                st.error(f"Waduh, gagal manggil API. Error detail: {e}")
